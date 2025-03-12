@@ -1,0 +1,118 @@
+# Borneo Forest Disturbance Dataset
+- Ingest the information from this file, implement the Low-Level Tasks and generate the code that satisfies the High and Mid-Level Objectives.
+- CURRENT WORKING DIRECTORY: Change to: Borneo_Forest_Disturbance_Dataset
+
+## High Level Overview
+I want to work on validating the quality of my data set that I've built previously for my masters, improve the quality of the dataset and take it to a level so that it can effectively be utilised by deep learning algorithms to learn the detection of forest disturbances. Hopefully i would like to host this dataset on Huggingface.  
+
+## End State Output/ Visualisation
+
+output test evaluation metrics for the dataset - distribution of different classes, class density, pixel values and density over pixel value. Dataset Test Metrics.  
+For model runs, visual confusion matrix examples, and mIoU for each class over the test set.  
+
+
+## Docs
+
+
+## High-Level Objectives
+- [What do you want to build?]
+- Validate the quality of the current dataset, so that i can host this online on some platform like huggingface. This means, checking the current output of the images for the pixel values, checking the preprocessing scripts so that the data is being processed correctly and to a good enough level to be able to be used as at least a starter benchmark for forest disturbance detection.    
+
+
+## Mid-Level Objectives
+- [List of mid-level objectives- what are the steps to achieve the high-level objective?]
+- [Each objective should be concrete and measurable]
+- [But not to detailed - save details for implementation notes]
+- Ingest the code base. Particularly the src and bin files.
+- we are focusing on the processing pipeline only here.
+- 
+- Build a Readme summarising the structure, of the codebase and what steps the pipeline consists of. 
+- assess processing pipeline for potential errors, in terms of code, and output assessment of images.
+- Keep notes of steps taken.
+- set up funal assessment of data quality
+- Keep track of changes made using Git 
+
+
+
+## Implementation Notes
+- [Implortant technical details - what are the imporltant technical detials?]
+- [Dependencies and requirements - what are the depencies and requirements?]
+- [Coding standards to follow - what are teh doding standaredds to follow?]
+- [Other technical guidance]
+- This pipeline is already contained within another project hls_foundation_os, while this project was about assessing the performance of a certain Foundation model on the status set what we will be working on is focusing on the data processing pipeline utilised in this project.
+- we are not focusing on the models, so ignore the configs and other model connected code.
+- The main files for this project are found within the bin and source files. 
+- I have removed the config and model related files for now. let me know if you need them in this process.
+- Within these files we will see three different processing pipelines one for RGB data, using sentinel 2, one using sar sentinel-1 and one using InSAR from Sentinel-1 data. 
+- We will focus fistly on the RGB data and then go through each one by one.
+- in the readme, keep track tasks completed, yet to complete, brief implementation questions that you might have that will hold back the project until answered.
+- iteratively update the readme file after each step.
+- At each completion of major steps(prompt fully completed, mid-level objective completed), push changes to git.
+- Create Documentation for the Pipeline structure and steps in the processing.
+- Reference Back to this Doc and the Readme to regularly make sure/question if we are keeping on track.
+
+
+## Low-level Tasks
+    # Order start to finish
+
+## Tasks (Aka Prompts)
+    # (tasks or steps to give an engineer to complete this)
+
+[1]Project Overview & Requirements:
+Ingest the provided project spec and summarize the high-level objectives: validate the dataset quality, improve data preprocessing, and prepare the dataset for deep learning (for eventual Hugging Face hosting).
+List mid-level objectives including codebase ingestion (from the src and bin directories), pipeline assessment, documentation, and iterative git commits.
+Confirm the expected outputs: evaluation metrics (class distribution, density, pixel values) and, for model runs, visual confusion matrices and mIoU per class.
+Change the working directory to Borneo_Forest_Disturbance_Dataset.
+After completing this step, push a commit to git summarizing these requirements.
+
+[2]Readme Initialization & Iterative Documentation:
+Create a new Readme.md that outlines the project structure, detailing the organization of files (bin, src) and the different processing pipelines (RGB, Sentinel-1 SAR, and Sentinel-1 InSAR).
+Include sections for completed tasks, pending tasks, and technical questions/issues.
+Push the initial Readme to git.
+
+[3]Codebase Ingestion & Analysis:
+Ingest and analyze the existing code in the src and bin directories, focusing on the processing pipeline while ignoring removed model/config files.
+Document the current processing flows for the three pipelines (starting with RGB).
+Push an update to git with a summary of the code structure and identified pipelines.
+
+[4]RGB Data Processing Pipeline Assessment:
+Isolate the processing pipeline for the RGB data.
+Examine and document each preprocessing step, verifying that images are processed correctly (e.g., pixel value normalization, data augmentation, etc.).
+Identify any potential errors or improvement areas.
+Push a commit detailing the RGB pipeline assessment.
+
+[5]Data Quality Evaluation for RGB Pipeline:
+Develop or refine code to compute evaluation metrics for the RGB dataset.
+Calculate and visualize metrics such as class distribution, class density, pixel value distribution, and pixel value density.
+Commit and push these evaluation scripts and visual outputs to git.
+
+[6] Assess the Dataset metrics for error and issues with the dataset, image quality for model injestion. 
+
+[7] Repeat steps 5 and 6 for the SAR and InSAR Datasets.
+
+[8]Model Run Assessment on RGB Data:
+Ask for the additional model information to be added to the repo. 
+Integrate functionality to run a test model evaluation on the RGB pipeline.
+Compute and output visual confusion matrices and mIoU for each class over the test set.
+Ensure results are formatted in a clear, benchmark-like table.
+Push a commit with the implemented evaluation code and results.
+
+
+[9]Iterative Documentation & Git Integration:
+Update the Readme.md after each major step, recording progress, outstanding tasks, and any technical questions that may hinder further progress.
+Ensure that after completing each of the above steps, changes are committed and pushed to git with clear, descriptive messages.
+
+[10]Final Review & Summary Report:
+Cross-reference all implemented tasks with the high-level and mid-level objectives to ensure comprehensive coverage.
+Prepare a final summary report in the documentation detailing improvements made, issues resolved, and remaining challenges.
+Push the final documentation update to git.
+
+ 
+(NOT FOR THE AGENT, YOU!)
+Things to add: 
+Agent_summary file
+Architecture.md file in the architecture use a mermaid graph to show the processing pipeline and key components/steps. 
+Docs.md file. In the Docs, Show:
+File Level documentation, perhaps example usage and key functions of the main run scripts, And finally in the Docs have a Implementation Rationale, inlcuding:
+Library Choices, Design Patterns, and some basic FAQs such as information on metrics etc used.
+ 
