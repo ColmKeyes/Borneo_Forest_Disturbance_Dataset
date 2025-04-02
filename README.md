@@ -78,3 +78,4 @@ git commit -m "Initial commit: Project setup with documentation and package stru
 - Initial commit: Created project structure and README
 - Documentation update: Added comprehensive documentation files
 - Git setup: Added .gitignore and package initialization files
+- HLS Preprocessing Update: Updated .gitignore to exclude HLS data directory and pushed updated HLS preprocessing scripts.
