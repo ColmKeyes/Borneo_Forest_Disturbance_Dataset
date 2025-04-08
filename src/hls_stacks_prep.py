@@ -72,13 +72,16 @@ class prep:
     A class for processing Sentinel-2 imagery data in preperation for assimilation by the Prithvi-100m model.
     """
 
-    def __init__(self, sentinel2_path, stack_path_list, bands, radd_alert_path, land_cover_path, shp=None):
+    def __init__(self, sentinel2_path, stack_path_list, bands, radd_alert_path, land_cover_path, shp=None, sensor_type='S30'):
         """
         Args:
-            path (list): List of file paths to Sentinel-2 imagery.
+            path (list): List of file paths to HLS imagery.
             stack_path_list (str): Path to directory where output raster stacks will be stored.
-            bands (list): List of Sentinel-2 band names to include in the stack (e.g., ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']).
+            bands (list): List of band names to include in the stack.
+                         For S30: ['B02', 'B03', 'B04', 'B08', 'B11', 'B12']
+                         For L30: ['B02', 'B03', 'B04', 'B05', 'B06', 'B07']
             shp (geopandas.GeoDataFrame, optional): GeoDataFrame containing study area polygon.
+            sensor_type (str): Either 'S30' (Sentinel-2) or 'L30' (Landsat-8/9)
 
         Attributes:
             cube (None or xarray.DataArray): Multi-dimensional, named array for storing data.
@@ -90,6 +93,15 @@ class prep:
         self.bands = bands
         self.shp = shp
         self.cube = None
+        self.sensor_type = sensor_type
+
+        # Band mapping between L30 and S30
+        self.band_mapping = {
+            'L30': {'B02': 'B02', 'B03': 'B03', 'B04': 'B04', 
+                   'B05': 'B8A', 'B06': 'B11', 'B07': 'B12'},
+            'S30': {'B02': 'B02', 'B03': 'B03', 'B04': 'B04',
+                   'B8A': 'B8A', 'B11': 'B11', 'B12': 'B12'}
+        }
 
         self.radd_alert_path = radd_alert_path
         self.land_cover_path = land_cover_path
@@ -168,8 +180,8 @@ class prep:
             image_crs = image_raster.crs
 
             # Extract the relevant parts of the file name from the sentinel_stack_path
-            #tile, date = os.path.basename(sentinel_stack_path).split('_')[0].split('.')
-            date = os.path.basename(sentinel_stack_path).split('_')[0].split('.')
+            tile, date = os.path.basename(sentinel_stack_path).split('_')[0].split('.')
+            # date = os.path.basename(sentinel_stack_path).split('_')[0].split('.')
 
             #identifier = f"{parts[0]}_{parts[1]}"
 
@@ -177,7 +189,7 @@ class prep:
             suffix = os.path.basename(single_image_path)
 
             # Combine the identifier and suffix to form the output file name
-            output_file_name = f"{date}_{suffix}"#f"{date}_{tile}_{suffix}"
+            output_file_name = f"{date}_{tile}_{suffix}"
             output_file_path = os.path.join(output_path, output_file_name)
 
             if os.path.exists(output_file_path):
@@ -221,8 +233,9 @@ class prep:
 
             ########
             ## Radd alerts contain values 2 and 3. 2 for uncertain events, 3 for hihgly certain events. we choose only certain events.
+            ## We will see the difference in values between 2 and 3 only in radd alerts this time.
             ########
-            image_cropped.mask[0] = (image_cropped.data[0] != 3)
+            # image_cropped.mask[0] = (image_cropped.data[0] != 3)
 
             # Update the profile for the cropped image
             output_profile = image_raster.profile.copy()
@@ -230,69 +243,123 @@ class prep:
                 'height': image_cropped.shape[1],
                 'width': image_cropped.shape[2],
                 'transform': transform,
-                'count' : image_raster.count  #1 ##is 1 for a single band crop 
+                'count' : image_cropped.shape[0]  #1 ##is 1 for a single band crop
             })
 
 
 
 
             with rasterio.open(output_file_path, 'w', **output_profile) as dest:
-                dest.write(image_cropped[1], 1)
+                dest.write(image_cropped[0], 1)
+                dest.write(image_cropped[1], 2)
                 print(f"written {output_file_path}")
             return output_file_path
 
     def write_hls_rasterio_stack(self):
         """
-        Write folder of Sentinel-2 GeoTIFFs, corresponding Fmask, to a GeoTIFF stack file.
+        Write folder of HLS GeoTIFFs (either L30 or S30) to a GeoTIFF stack file.
         """
         # Create a dictionary to hold file paths for each tile-date combination
         tile_date_files = {}
 
-        # Collect all band files into the dictionary
-        for file in os.listdir(self.sentinel2_path):
-            if any(band in file for band in self.bands) and file.endswith('.tif'):
-                # Extract tile and date information from the filename
-                parts = file.split('.')
-                tile_date_key = f'{parts[2]}.{parts[3][:7]}'  # Tile and Date
 
-                if tile_date_key not in tile_date_files:
-                    tile_date_files[tile_date_key] = []
+        # Get all tile folders (e.g. tile_x0_y0, tile_x0_y1, etc.)
+        if not os.path.exists(self.sentinel2_path):
+            raise FileNotFoundError(f"Path {self.sentinel2_path} does not exist")
+            
+        tile_folders = [f for f in os.listdir(self.sentinel2_path) if f.startswith('tile_')]
+        
+        for tile_folder in tile_folders:
+            tile_path = os.path.join(self.sentinel2_path, tile_folder)
 
-                tile_date_files[tile_date_key].append(os.path.join(self.sentinel2_path, file))
+            # if self.sensor_type == "S30":
+            #     tile_path = os.path.join(tile_path, 'S30')
+            # elif self.sensor_type == "L30":
+            #     tile_path = os.path.join(tile_path, 'L30')
+
+            # Look for sensor-specific folder within each tile
+            sensor_path = os.path.join(tile_path, self.sensor_type)
+            print(f"Assessing {sensor_path}...")
+            if not os.path.exists(sensor_path):
+                print(f"No {self.sensor_type} data found in {tile_path}")
+                continue
+                
+            # Ensure the sensor path exists and contains data
+            if not os.listdir(sensor_path):
+                print(f"Empty {self.sensor_type} folder in {tile_path}")
+                continue
+                
+            # Collect all band files into the dictionary
+            for file in os.listdir(sensor_path):
+                if file.endswith('.tif'):
+                    # Extract relevant parts based on sensor type
+                    parts = file.split('.')
+                    if self.sensor_type == 'S30':
+                        # S30 format: HLS.S30.T{tile}.{date}T{time}.v2.0.B{band}.tif
+                        if len(parts) >= 6 and parts[0] == 'HLS' and parts[1] == 'S30':
+                            tile_date_key = f'{parts[2]}.{parts[3][:7]}'  # Tile and Date
+                            band = parts[6]  # Extract band number from 'B02' etc
+                    elif self.sensor_type == 'L30':
+                        # L30 format: HLS.L30.T{tile}.{date}T{time}.v2.0.B{band}.tif
+                        if len(parts) >= 6 and parts[0] == 'HLS' and parts[1] == 'L30':
+                            tile_date_key = f'{parts[2]}.{parts[3][:7]}'  # Tile and Date
+                            band = parts[6]  # Extract band number from 'B02' etc
+                    else:
+                        continue
+
+                    # Only process if band is in our target bands
+                    if f'{band}' in self.bands:
+                        if tile_date_key not in tile_date_files:
+                            tile_date_files[tile_date_key] = {}
+                        tile_date_files[tile_date_key][f'{band}'] = os.path.join(sensor_path, file)
 
         # Process each tile-date set of files
-        for tile_date, files in tile_date_files.items():
+        for tile_date, band_files in tile_date_files.items():
             # Skip if not all bands are present
-            if len(files) != len(self.bands):
+            if len(band_files) != len(self.bands):
+                print(f"Skipping {tile_date} - missing bands (have {len(band_files)}, need {len(self.bands)})")
                 continue
 
-            # Sort the files to ensure they are in the correct band order
-            files.sort()
+            # Sort files according to band order specified in self.bands
+            files = [band_files[band] for band in self.bands]
 
             # Read metadata of first file
             with rasterio.open(files[0]) as src0:
                 meta = src0.meta
 
             # Update meta to reflect the number of layers
-            meta.update(count = len(files))
+            meta.update(count=len(files))
 
+            stack_dir = 'bin/data_preprocessing_hls/data/hls/stacks'
+            os.makedirs(stack_dir, exist_ok=True)
+
+            # Ensure output directory exists
+            os.makedirs(self.stack_path_list, exist_ok=True)
+            
             # Write the stack
-            stack_file_path = os.path.join(self.stack_path_list, f'{tile_date}_stack.tif')
-            with rasterio.open(stack_file_path, 'w', **meta) as dst:
-                for id, layer in enumerate(files, start=1):
-                    with rasterio.open(layer) as src1:
-                        dst.write_band(id, src1.read(1))
-
+            stack_file_path = os.path.join(self.stack_path_list, f'{tile_date}_{self.sensor_type}_stack.tif')
+            if os.path.exists(stack_file_path):
+                print(
+                    f"File {os.path.basename(stack_file_path)} already exists in folder {self.stack_path_list}. Skipping creation.")
+            else:
+                with rasterio.open(stack_file_path, 'w', **meta) as dst:
+                    for id, layer in enumerate(files, start=1):
+                        with rasterio.open(layer) as src1:
+                            dst.write_band(id, src1.read(1))
+                print(f"File {os.path.basename(stack_file_path)} created in folder {self.stack_path_list}")
 
     def merge_with_agb(self, agb_path, output_path):
         for sentinel_file in os.listdir(self.stack_path_list):
             if sentinel_file.endswith('_stack.tif'):
                 sentinel_stack_path = os.path.join(self.stack_path_list, sentinel_file)
 
-                # Extract the tile and date from the Sentinel-2 file name
-                tile, date = sentinel_file.split('_')[0].split(".")
+                # Extract components from filename (now includes sensor type)
+                parts = sentinel_file.split('_')
+                tile_date = parts[0]  # e.g. "T22VEQ.2021001"
+                sensor = parts[1]      # "L30" or "S30"
+
                 # Find the corresponding AGB file based on tile and date
-                agb_file_name = f"{tile}_{date}_Kalimantan_land_cover.tif"
+                agb_file_name = f"{tile_date}_Kalimantan_land_cover.tif"
                 agb_file_path = os.path.join(agb_path, agb_file_name)
 
                 if not os.path.exists(agb_file_path):
@@ -300,21 +367,21 @@ class prep:
                     continue
 
                 with rasterio.open(sentinel_stack_path) as sentinel_stack, rasterio.open(agb_file_path) as agb:
-                    # Ensure AGB data is read with the same shape as the Sentinel-2 stack
+                    # Ensure AGB data is read with the same shape as the HLS stack
                     agb_data = agb.read(
                         out_shape=(1, sentinel_stack.height, sentinel_stack.width),
                         resampling=Resampling.nearest
                     )
 
-                    # Stack AGB data as an additional band to Sentinel-2 data
+                    # Stack AGB data as an additional band to HLS data
                     stacked_data = np.concatenate((sentinel_stack.read(), agb_data), axis=0)
 
                     # Update the profile for the output file
                     output_profile = sentinel_stack.profile.copy()
                     output_profile.update(count=stacked_data.shape[0])
 
-                    # Write the stacked data to a new file
-                    output_file_name = sentinel_file.replace('_stack.tif', '_agb_stack.tif')
+                    # Write the stacked data to a new file with sensor type preserved
+                    output_file_name = sentinel_file.replace('_stack.tif', f'_{sensor}_agb_stack.tif')
                     output_file_path = os.path.join(output_path, output_file_name)
                     with rasterio.open(output_file_path, 'w', **output_profile) as dst:
                         dst.write(stacked_data)
@@ -471,30 +538,3 @@ class prep:
         gdal.Warp(destNameOrDestDS=output_file,
                   srcDSOrSrcDSTab=input_files,
                   options=warp_options)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
