@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 """
+# from bin.run_analysis.model_run_analysis import output_dir
+
 """
 @Time    : 6/12/2024 00:01
 @Author  : Colm Keyes
@@ -11,19 +13,35 @@
 import os
 from src.dataset_management import DatasetManagement
 from src.model_input_processor import Loader
+import glob
+
+home_dir = r"/home/colm-the-conjurer/VSCode/workspace/Borneo_Forest_Disturbance_Dataset/bin/data_preprocessing_hls/data/"
+tile_folder  = "9.Tiles_512"
 
 
-source_dir = r"E:\Data\Sentinel2_data\30pc_cc\Borneo_June2021_Dec_2023_30pc_cc_stacks_agb_radd_forest_fmask"
-train_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\training"
-train_dir_narrow = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\training_narrow"
-val_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\validation"
-val_dir_narrow = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\validation_narrow"
-output_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc"  # Directory to store cropped tiles
+source_dir = os.path.join(home_dir, "8.2.stacks_radd_forest_fmask")
+train_dir    = os.path.join(home_dir, tile_folder, "training")
+val_dir      = os.path.join(home_dir, tile_folder, "validation")
 
-globalnorm_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\globalnorm"
-globalnorm_10000_dir = f"{globalnorm_dir}\\10000_minalerts"
-globalnorm_12500_dir = f"{globalnorm_dir}\\12500_minalerts"
-suffix = "_radd_fmask_stack.tif"
+if not os.path.exists(train_dir):
+    os.makedirs(train_dir)
+if not os.path.exists(val_dir):
+    os.makedirs(val_dir)
+
+output_dir =  os.path.join(home_dir, tile_folder)
+# home_dir = r"/home/colm-the-conjurer/VSCode/workspace/Borneo_Forest_Disturbance_Dataset/bin/data_preprocessing_hls/data/"
+# source_dir = r"/home/colm-the-conjurer/VSCode/workspace/Borneo_Forest_Disturbance_Dataset/bin/data_preprocessing_hls/data/stacks_radd_forest_fmask"
+# train_dir = r"/home/colm-the-conjurer/VSCode/workspace/Borneo_Forest_Disturbance_Dataset/bin/data_preprocessing_hls/data/Tiles_512_30pc_cc/training"
+# train_dir_narrow = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\training_narrow"
+# val_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\validation"
+# val_dir_narrow = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\validation_narrow"
+# output_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc"  # Directory to store cropped tiles
+#
+# globalnorm_dir = r"E:\Data\Sentinel2_data\30pc_cc\Tiles_512_30pc_cc\globalnorm"
+# globalnorm_10000_dir = f"{globalnorm_dir}\\10000_minalerts"
+# globalnorm_12500_dir = f"{globalnorm_dir}\\12500_minalerts"
+suffix = "_forest_masked_fmask_stack.tif"
+# suffix_pattern = f"_forest_masked_fmask_stack*{suffix}*.tif"
 tile_size = 512
 
 # Instantiate the DatasetManagement class with an additional output_dir parameter
@@ -35,7 +53,7 @@ if __name__ == '__main__':
     #############
     ## Step 9: Filter images based on minimal labels requirements. typical limits: 1000-5000.
     #############
-    # alert_stacks = model_funcs.filter_stacks(output_dir,suffix, 1,15000)#5000)#1000) # set to 0 for current distribution
+    # alert_stacks = model_funcs.filter_stacks(source_dir ,suffix, 1,15000)#5000)#1000) # set to 0 for current distribution
     # distribution = model_funcs.calculate_alert_distribution(alert_stacks,5)
     # print(distribution)
 
@@ -44,19 +62,19 @@ if __name__ == '__main__':
     #############
     test_sites = ["2023076_T49MET", "2023111_T49MET", "2023241_T49MDU","2023245_T50MKE", "2023271_T49MDU", "2023276_T49MDU","2023290_T50MKE"]
     for file in os.listdir(source_dir):
-        if file.endswith('_radd_fmask_stack.tif'):
-            if any(site in file for site in test_sites):
-                image_path = os.path.join(source_dir, file)
-                data_manager.crop_to_tiles(image_path,output_dir)
-                print(f"cropping finished: {file}")
+        if file.endswith('_forest_masked_fmask_stack.tif'):
+            # if any(site in file for site in test_sites):
+            image_path = os.path.join(source_dir, file)
+            data_manager.crop_to_tiles(image_path,output_dir)
+            print(f"cropping finished: {file}")
 
     #############
     ## Step 11: Re-Filter tiled images based on minimal labels requirements. typical limits: 1000-5000.
     #############
 
-    # alert_stacks = model_funcs.filter_stacks(val_dir_narrow,1,7500)#output_dir, 1,0)#1000)
-    # distribution = model_funcs.calculate_alert_distribution(alert_stacks,20)
-    # print(distribution)
+    alert_stacks = model_funcs.filter_stacks(output_dir,".tif",1,7500)#output_dir, 1,0)#1000)
+    distribution = model_funcs.calculate_alert_distribution(alert_stacks,20)
+    print(distribution)
 
 
 
@@ -64,7 +82,7 @@ if __name__ == '__main__':
     ## step 12, split tiles into radd and sentinel2
     #############
 
-    pairs = data_manager.split_tiles(output_dir) #globalnorm_dir) #output_dir)
+    # pairs = data_manager.split_tiles(output_dir) #globalnorm_dir) #output_dir)
 
     #############
     ## step 13, alter labels
