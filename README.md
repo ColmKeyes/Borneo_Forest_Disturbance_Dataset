@@ -1,81 +1,68 @@
-Borneo Forest Disturbance Dataset
+# Borneo Forest Disturbance Dataset
 
-## Project Overview
-This project focuses on validating and improving the quality of a forest disturbance dataset for deep learning applications. The goal is to prepare the dataset for hosting on Huggingface by ensuring proper preprocessing and implementing comprehensive quality metrics.
+A comprehensive dataset for detecting and analyzing forest disturbances in Borneo using multi-modal satellite imagery (Sentinel-1 SAR and Sentinel-2 HLS).
 
-## Documentation Progress
-- [x] Created Agent_summary.md
-- [x] Created ARCHITECTURE.md with Mermaid diagram
-- [x] Created DOCS.md with file-level documentation and implementation rationale
+## Key Features
 
-## Project Structure
-```
-Borneo_Forest_Disturbance_Dataset/
-├── bin/                     # Processing pipeline scripts
-│   ├── data_preprocessing_hls/  # RGB data processing
-│   ├── data_preprocessing_sar/  # SAR data processing
-│   ├── run_analysis/        # Analysis scripts
-│   └── run_model/           # Model running scripts
-├── src/                     # Core processing modules
-│   ├── dataset_management.py
-│   ├── hls_stacks_prep.py
-│   ├── model_analysis.py
-│   ├── model_input_processor.py
-│   └── utility_functions.py
-├── docs/                    # Documentation files
-│   ├── Agent_summary.md
-│   ├── ARCHITECTURE.md
-│   └── DOCS.md
-└── README.md                # Project documentation
-```
+- Preprocessed Sentinel-2 HLS imagery with cloud masking
+- Integrated RADD forest disturbance alerts
+- Processed Sentinel-1 SAR coherence data
+- Ready-to-use 512x512 tiles for deep learning
+- Comprehensive preprocessing pipeline
 
-## Processing Pipelines
-1. RGB Data Pipeline (Sentinel-2)
-2. SAR Data Pipeline (Sentinel-1)
-3. InSAR Data Pipeline (Sentinel-1)
+## Installation
 
-## Tasks
-### Completed
-- [x] Project overview and requirements analysis
-- [x] Initial README creation
-- [x] System architecture documentation
-- [x] Comprehensive technical documentation
-
-### In Progress
-- [ ] RGB pipeline assessment
-- [ ] Data quality evaluation implementation
-
-### Pending
-- [ ] SAR pipeline assessment
-- [ ] InSAR pipeline assessment
-- [ ] Model evaluation integration
-- [ ] Final documentation updates
-
-## Technical Questions
-1. Are there specific quality thresholds for pixel values that should be enforced?
-2. Should we implement additional data augmentation steps?
-3. What specific metrics are most important for Huggingface dataset hosting?
-
-## Git Setup Instructions
-
-1. Initialize Git repository:
 ```bash
+git clone https://github.com/ColmKeyes/Borneo_Forest_Disturbance_Dataset.git
 cd Borneo_Forest_Disturbance_Dataset
-git init
+pip install -e .
 ```
 
-2. Add all files:
-```bash
-git add .
+## Data Processing Pipeline
+
+The dataset is processed through three main stages:
+
+1. **HLS Preprocessing** (`bin/data_preprocessing_hls/`):
+   - FMask cloud masking
+   - Band stacking
+   - RADD alert integration
+   - Tile generation
+
+2. **SAR Preprocessing** (`bin/data_preprocessing_sar/`):
+   - Coherence calculation
+   - Terrain correction
+   - Temporal stacking
+
+3. **Dataset Preparation** (`src/dataset_management.py`):
+   - Train/validation split
+   - Quality filtering
+   - Metadata generation
+
+## Data Sources
+
+- **HLS Imagery**: NASA Harmonized Landsat Sentinel-2 (HLS) project
+- **RADD Alerts**: Wageningen University's Radar for Detecting Deforestation (RADD)
+- **SAR Data**: ESA Sentinel-1 missions
+
+## Usage Example
+
+```python
+from src.dataset_management import DatasetManagement
+
+# Initialize dataset manager
+dm = DatasetManagement(
+    source_dir="data/8.2.stacks_radd_forest_fmask",
+    output_dir="data/9.Tiles_512"
+)
+
+# Process a single HLS stack
+dm.crop_to_tiles("2023245_T50MKE_forest_masked_fmask_stack.tif")
 ```
 
-3. Make initial commit:
-```bash
-git commit -m "Initial commit: Project setup with documentation and package structure"
-```
+## Contributing
 
-## Git Commit History
-- Initial commit: Created project structure and README
-- Documentation update: Added comprehensive documentation files
-- Git setup: Added .gitignore and package initialization files
-- HLS Preprocessing Update: Updated .gitignore to exclude HLS data directory and pushed updated HLS preprocessing scripts.
+Contributions are welcome! Please open an issue to discuss proposed changes.
+
+## License
+
+[MIT License](LICENSE)
