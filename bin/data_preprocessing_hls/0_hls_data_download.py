@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Output directory
-output_dir = 'data/hls'
+output_dir = '/media/colm-the-conjurer/writable/data/hls'
 os.makedirs(output_dir, exist_ok=True)
 
 # EarthData credentials
@@ -142,7 +142,7 @@ logger.info("Saved tiles as GeoJSON")
 
 
 # Function to search and download HLS data for a single tile
-def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10, max_results=10):
+def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10, max_results=50000):
     """
     Search and download HLS data for a specific tile
 
@@ -156,6 +156,7 @@ def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10
     """
     tile_id = tile['id']
     bounds = tile['bounds']
+    print(f"Processing {collection_type} for tile {tile['id']}")
     x1, y1, x2, y2 = bounds
 
     # Create directory for this tile
@@ -218,20 +219,42 @@ def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10
         metadata_df.to_csv(metadata_path, index=False)
 
         # Download the granules
-        for i, granule in enumerate(results):
-            granule_id = getattr(granule, 'uuid', str(granule))
-            title = getattr(granule, 'native-id', granule_id)            # Check if already downloaded
-            expected_path = os.path.join(tile_dir, title)
-            if os.path.exists(expected_path):
-                logger.info(f"Granule {title} already downloaded. Skipping.")
-                continue
+    # Download the granules
+        # Download the granules
+        import glob
 
-            logger.info(f"Downloading granule {i + 1}/{num_results}: {title}")
-            with open(tile_log, 'a') as log:
-                log.write(f"Downloading {title} at {datetime.datetime.now()}\n")
+        # Build list of granules that actually need downloading
+        granules_to_download = []
+        for granule in results:
+            title = getattr(granule, 'native-id', getattr(granule, 'uuid', str(granule)))
+            pattern = os.path.join(tile_dir, f"{title}*.tif")
+            if glob.glob(pattern):
+                logger.info(f"Granule {title} already on disk. Skipping.")
+            else:
+                granules_to_download.append((granule, title))
 
+        if not granules_to_download:         logger.info("All granules already present for this tile. No download needed.")
+        else:
+            logger.info(f"Downloading {len(granules_to_download)}/{num_results} new granules...")
+            # Extract just the granule objects for download()
+            download_list = [g for g, t in granules_to_download]
             try:
-                # Download the granule
+                downloaded_files = earthaccess.download(
+                    download_list,
+                    local_path=tile_dir
+                )
+                logger.info(f"Download finished. Files: {downloaded_files}")
+                # Optionally log each title
+                with open(tile_log, 'a') as log:
+                    for _, title in granules_to_download:
+                        log.write(f"Downloaded {title} at {datetime.datetime.now()}\n")
+            except Exception as e:
+                logger.error(f"Error downloading granules: {e}")
+                with open(tile_log, 'a') as log:
+                    log.write(f"ERROR downloading batch: {e}\n")
+
+            # Inner try/except just for the download step
+            try:
                 downloaded_files = earthaccess.download(
                     [granule],
                     local_path=tile_dir
@@ -247,7 +270,6 @@ def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10
                     with open(tile_log, 'a') as log:
                         log.write(f"No files downloaded for {title}\n")
 
-                # Add a small delay between downloads
                 time.sleep(2)
 
             except Exception as e:
@@ -259,6 +281,48 @@ def process_tile_hls(tile, collection_type, start_date, end_date, cloud_cover=10
         logger.error(f"Error processing {collection_type} for tile {tile_id}: {str(e)}")
         with open(tile_log, 'a') as log:
             log.write(f"ERROR: {str(e)}\n")
+
+    #     for i, granule in enumerate(results):
+    #         granule_id = getattr(granule, 'uuid', str(granule))
+    #         title = getattr(granule, 'native-id', granule_id)            # Check if already downloaded
+    #         expected_path = os.path.join(tile_dir, title)
+    #         if os.path.exists(expected_path):
+    #             logger.info(f"Granule {title} already downloaded. Skipping.")
+    #             continue
+    #
+    #         logger.info(f"Downloading granule {i + 1}/{num_results}: {title}")
+    #         with open(tile_log, 'a') as log:
+    #             log.write(f"Downloading {title} at {datetime.datetime.now()}\n")
+    #
+    #         try:
+    #             # Download the granule
+    #             downloaded_files = earthaccess.download(
+    #                 [granule],
+    #                 local_path=tile_dir
+    #             )
+    #
+    #             if downloaded_files:
+    #                 logger.info(f"Successfully downloaded {title}")
+    #                 with open(tile_log, 'a') as log:
+    #                     log.write(f"Successfully downloaded {title}\n")
+    #                     log.write(f"Files: {downloaded_files}\n")
+    #             else:
+    #                 logger.warning(f"No files downloaded for {title}")
+    #                 with open(tile_log, 'a') as log:
+    #                     log.write(f"No files downloaded for {title}\n")
+    #
+    #             # Add a small delay between downloads
+    #             time.sleep(2)
+    #
+    #         except Exception as e:
+    #             logger.error(f"Error downloading {title}: {str(e)}")
+    #             with open(tile_log, 'a') as log:
+    #                 log.write(f"ERROR downloading {title}: {str(e)}\n")
+    #
+    # except Exception as e:
+    #     logger.error(f"Error processing {collection_type} for tile {tile_id}: {str(e)}")
+    #     with open(tile_log, 'a') as log:
+    #         log.write(f"ERROR: {str(e)}\n")
 
 
 # Function to extract bands from HLS data
@@ -304,7 +368,7 @@ def main():
             with ThreadPoolExecutor(max_workers=2) as executor:
                 list(executor.map(
                     lambda tile: process_tile_hls(
-                        tile, ctype, start_date, end_date, cloud_cover=10, max_results=5
+                        tile, ctype, start_date, end_date, cloud_cover=10, max_results=50000
                     ),
                     tiles
                 ))
@@ -314,7 +378,7 @@ def main():
                 logger.info(f"Processing {ctype} data for tile {i + 1}/{len(tiles)}: {tile['id']}")
 
                 process_tile_hls(
-                    tile, ctype, start_date, end_date, cloud_cover=10, max_results=5
+                    tile, ctype, start_date, end_date, cloud_cover=10, max_results=50000
                 )
 
                 # Add delay between tiles to avoid overwhelming the API
