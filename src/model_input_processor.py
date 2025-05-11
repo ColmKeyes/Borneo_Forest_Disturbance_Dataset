@@ -20,8 +20,8 @@ from osgeo import gdal
 import json
 import re
 import matplotlib.pyplot as plt
-from mmseg.datasets import CustomDataset
-from mmseg.datasets.builder import PIPELINES
+# from mmseg.datasets import CustomDataset
+# from mmseg.datasets.builder import PIPELINES
 import datetime as dt
 from datetime import datetime
 

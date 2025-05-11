@@ -55,7 +55,7 @@ from shapely.geometry import box
 from shapely.ops import transform as shapely_transform
 from osgeo import gdal
 from osgeo_utils import gdal_merge as gm
-
+import glob
 
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -386,12 +386,19 @@ class prep:
                     with rasterio.open(output_file_path, 'w', **output_profile) as dst:
                         dst.write(stacked_data)
 
-
-
-
     def forest_loss_mask(self, sentinel_stacks, forest_loss_path, output_path, reference_year=2021):
+        # Check if forest loss directory exists and has files
+        # if not os.path.exists(forest_loss_path) or not os.listdir(forest_loss_path):
+        #     print(f"No forest loss files found in {forest_loss_path}. Skipping forest loss masking.")
+        #     return
+
         for sentinel_file in os.listdir(sentinel_stacks):
-            if sentinel_file.endswith('_agb_radd_stack.tif'):
+            output_file_name = sentinel_file.replace('_radd_stack.tif', '_forest_masked_stack.tif')
+            output_file_path = os.path.join(output_path, output_file_name)
+            if os.path.exists(output_file_path):
+                print(f"{output_file_name} already exists, skipping.")
+                continue
+            if sentinel_file.endswith('_radd_stack.tif'):
                 sentinel_stack_path = os.path.join(sentinel_stacks, sentinel_file)
 
                 with rasterio.open(sentinel_stack_path) as sentinel_stack:
@@ -399,14 +406,13 @@ class prep:
                     sentinel_crs = sentinel_stack.crs
                     output_profile = sentinel_stack.profile.copy()
 
-                    # Initialize a variable to track if any mask was applied
+                    # Initialize mask tracking
                     mask_applied = False
 
                     for forest_loss_file in os.listdir(forest_loss_path):
-                        if forest_loss_file.endswith(".tif"):
+                        if forest_loss_file.endswith(".tif") and 'lossyear' in forest_loss_file:
                             forest_loss_file_path = os.path.join(forest_loss_path, forest_loss_file)
                             with rasterio.open(forest_loss_file_path) as forest_loss:
-
                                 forest_loss_data = np.zeros((1, sentinel_stack.height, sentinel_stack.width), dtype=rasterio.float32)
                                 reproject(
                                     source=rasterio.band(forest_loss, 1),
@@ -417,32 +423,20 @@ class prep:
                                     dst_crs=sentinel_crs,
                                     resampling=Resampling.nearest)
 
+                                # Apply forest loss mask
+                                current_year = reference_year - 2000
+                                mask_condition = (forest_loss_data[0] > 0) & (forest_loss_data[0] < current_year)
+                                sentinel_data[:, mask_condition] = sentinel_stack.nodata
+                                mask_applied = True
 
-                                # Check file type and apply the corresponding mask
-                                if 'lossyear' in forest_loss_file:
-                                    current_year = reference_year - 2000  # Adjust based on your reference year format
-                                    mask_condition = (forest_loss_data[0] > 0) & (forest_loss_data[0] < current_year)
-                                    sentinel_data[:, mask_condition] = sentinel_stack.nodata
-                                    lossyear_mask_applied = True
-
-                                # elif 'treecover' in forest_loss_file:
-                                #     mask_condition = forest_loss_data[0] < 80
-                                #     sentinel_data[:, mask_condition] = sentinel_stack.nodata
-                                #     treecover_mask_applied = True
-
-
-                    # Check if both masks were applied
-                    if lossyear_mask_applied: # and treecover_mask_applied:
+                    if mask_applied:
                         output_profile = sentinel_stack.profile.copy()
-                        output_file_name = sentinel_file.replace('_agb_stack.tif', '_agb_forest_masked_stack.tif')
-                        output_file_path = os.path.join(output_path, output_file_name)
+
                         with rasterio.open(output_file_path, 'w', **output_profile) as dst:
                             dst.write(sentinel_data)
-                        print(f"loss_year mask applied and saved to {output_file_name}")
+                        print(f"Forest loss mask applied and saved to {output_file_path}")
                     else:
-                        print(f"Could not apply both masks for {sentinel_file}")
-
-
+                        print(f"No valid forest loss files found for {sentinel_file}")
 
     """"""""
     # Utility Functionalities
@@ -478,49 +472,175 @@ class prep:
             with rasterio.open(output_file, "w", **out_meta) as dest:
                 dest.write(out_image)
 
-    def reorder_and_add_blank_band(self, input_file, output_file):
+    def reorder_and_add_blank_bands(self, input_file, output_file):
         with rasterio.open(input_file) as src:
-            #  metadata for new raster with additional band
+            # Update the metadata: total bands = number of HLS bands (src.count, typically 6) + 2 extra bands
             meta = src.meta.copy()
-            meta.update(count=8)
+            meta.update(count=src.count + 2)
 
-            # Create the new raster file
             with rasterio.open(output_file, 'w', **meta) as dst:
+                # Create a blank band (using the shape of band 1) that will be used for both extra bands
                 blank_band = src.read(1) * 0
-                dst.write(blank_band, 1)
 
+                # Write the extra blank bands with proper descriptions:
+                dst.write(blank_band, 1)
+                dst.set_band_description(1, "alert")
+                dst.write(blank_band, 2)
+                dst.set_band_description(2, "date")
+
+                # Retrieve HLS band descriptions from self.bands (which holds ['B02', 'B03', ...])
+                # If the source already contains descriptions, you might choose to check them first.
                 for band in range(1, src.count + 1):
                     data = src.read(band)
-                    dst.write(data, band + 1)
+                    # Write each HLS band starting at band index 3 in the new output file
+                    dst.write(data, band + 2)
+                    # Use self.bands to set the description for each HLS band
+                    description = self.bands[band - 1] if band - 1 < len(self.bands) else f"Band {band}"
+                    dst.set_band_description(band + 2, description)
+
+                # Update per-band statistics for the "date" band (band 2), not affected in qgis sadly.
+                # dst.update_tags(2, STATISTICS_MINIMUM='22000', STATISTICS_MAXIMUM='25000')
+                print(f"Written reordered file with extra bands to {output_file}")
+        return output_file
+
 
     def apply_fmask(self, sentinel_stack_path, fmask_path, output_file):
-        CLOUD_BIT = 1 << 1  # Bit 1 for clouds
-        CLOUD_SHADOW_BIT = 1 << 3  # Bit 3 for cloud shadow
+        import numpy as np
+        import rasterio
 
-        with rasterio.open(sentinel_stack_path) as sentinel_stack, rasterio.open(fmask_path) as fmask:
-            fmask_data = fmask.read(1)
+        CLOUD_BIT = 1 << 1
+        CLOUD_SHADOW_BIT = 1 << 3
 
-            # Cloud and cloud shadow masks
+        # (you can drop all the glob logic here since you already have the warped Fmask)
+        if not os.path.exists(fmask_path):
+            print(f"Fmask not found: {fmask_path}")
+            return
+
+        with rasterio.open(sentinel_stack_path) as ss, rasterio.open(fmask_path) as fm:
+            # Now ss.read() and fm.read(1) will both be (3696, 3696), so masking will work
+            fmask_data = fm.read(1)
             cloud_mask = (fmask_data & CLOUD_BIT) != 0
-            cloud_shadow_mask = (fmask_data & CLOUD_SHADOW_BIT) != 0
-            combined_mask = cloud_mask | cloud_shadow_mask
+            shadow_mask = (fmask_data & CLOUD_SHADOW_BIT) != 0
+            combined_mask = cloud_mask | shadow_mask
 
-            # Prepare an array to hold the masked data
-            masked_data = np.zeros_like(sentinel_stack.read(), dtype=rasterio.float32)
+            stack_data = ss.read()
+            nodata_val = ss.nodata if ss.nodata is not None else -9999
 
-            # Apply mask and fill with nodata value
-            nodata_value = sentinel_stack.nodata #if sentinel_stack.nodata is not None else -9999  # Use sentinel stack's nodata value or a default
+            # Apply mask
+            masked = np.where(
+                combined_mask[None, :, :],
+                nodata_val,
+                stack_data
+            ).astype(rasterio.float32)
 
-            for band in range(sentinel_stack.count):
-                band_data = sentinel_stack.read(band + 1)
-                masked_data[band, :, :] = np.where(combined_mask, nodata_value, band_data)
+            profile = ss.profile.copy()
+            profile.update(dtype=rasterio.float32, nodata=nodata_val)
 
-            # Update the profile for writing output
-            output_profile = sentinel_stack.profile.copy()
-            output_profile.update(dtype=rasterio.float32, nodata=nodata_value)
+            with rasterio.open(output_file, 'w', **profile) as dst:
+                dst.write(masked)
 
-            with rasterio.open(output_file, 'w', **output_profile) as dest:
-                dest.write(masked_data)
+        print(f"Written masked output: {output_file}")
+
+    # def apply_fmask(self, sentinel_stack_path, sentinel2_path, output_file):
+    #     import numpy as np
+    #     import rasterio
+    #
+    #     CLOUD_BIT = 1 << 1  # Bit 1 for clouds
+    #     CLOUD_SHADOW_BIT = 1 << 3  # Bit 3 for cloud shadow
+    #
+    #     # Extract date and tile from stack filename.
+    #     # New naming example: "2021185_T50NPH_forest_masked_stack.tif"
+    #     stack_name = os.path.basename(sentinel_stack_path)
+    #     parts = stack_name.split('_')
+    #     if len(parts) < 2:
+    #         print(f"Filename format not recognized: {stack_name}")
+    #         return
+    #     date = parts[0]  # e.g., "2021185"
+    #     tile = parts[1]  # e.g., "T50NPH"
+    #
+    #     # Try both sensor options (S30 and L30) to find the Fmask file.
+    #     fmask_path = None
+    #     candidate = os.path.join(sentinel2_path, f'HLS.{self.sensor_type}.{tile}_{date}.v2.0.Fmask.tif')
+    #     if os.path.exists(candidate):
+    #         fmask_path = candidate
+    #         print(f"applying fmask to {candidate}")
+    #
+    #
+    #
+    #     if not fmask_path:
+    #         print(
+    #             f"Fmask file not found for tile {tile} on date {date} in either sensor folder. Skipping cloud masking.")
+    #         return
+    #
+    #     with rasterio.open(sentinel_stack_path) as sentinel_stack, rasterio.open(fmask_path) as fmask:
+    #         fmask_data = fmask.read(1)
+    #
+    #         # Cloud and cloud shadow masks.
+    #         cloud_mask = (fmask_data & CLOUD_BIT) != 0
+    #         cloud_shadow_mask = (fmask_data & CLOUD_SHADOW_BIT) != 0
+    #         combined_mask = cloud_mask | cloud_shadow_mask
+    #
+    #         # Prepare an array to hold the masked data.
+    #         masked_data = np.zeros_like(sentinel_stack.read(), dtype=rasterio.float32)
+    #
+    #         # Use nodata value from the stack or default.
+    #         nodata_value = sentinel_stack.nodata if sentinel_stack.nodata is not None else -9999
+    #
+    #         for band in range(sentinel_stack.count):
+    #             band_data = sentinel_stack.read(band + 1)
+    #             masked_data[band, :, :] = np.where(combined_mask, nodata_value, band_data)
+    #
+    #         # Update the profile for writing output.
+    #         output_profile = sentinel_stack.profile.copy()
+    #         output_profile.update(dtype=rasterio.float32, nodata=nodata_value)
+    #
+    #         with rasterio.open(output_file, 'w', **output_profile) as dest:
+    #             dest.write(masked_data)
+
+
+    # def apply_fmask(self, sentinel_stack_path, sentinel2_path, output_file):
+    #     CLOUD_BIT = 1 << 1  # Bit 1 for clouds
+    #     CLOUD_SHADOW_BIT = 1 << 3  # Bit 3 for cloud shadow
+    #
+    #     # Extract tile and sensor from stack filename (format: TXXVEQ.YYYYDDD_S30_stack.tif)
+    #     stack_name = os.path.basename(sentinel_stack_path)
+    #     parts = stack_name.split('_')
+    #     tile_date = parts[0]  # e.g. "T22VEQ.2021001"
+    #     sensor = parts[1]     # "S30" or "L30"
+    #     tile = tile_date.split('.')[0]  # e.g. "T22VEQ"
+    #
+    #     # Construct path to Fmask file
+    #     # tile_path = os.path.join(sentinel2_path, f'tile_{tile.lower()}')
+    #     fmask_path = os.path.join(sentinel2_path, sensor, f'HLS.{sensor}.{tile_date}.v2.0.Fmask.tif')
+    #
+    #     if not os.path.exists(fmask_path):
+    #         print(f"Fmask file not found at {fmask_path}. Skipping cloud masking.")
+    #         return
+    #
+    #     with rasterio.open(sentinel_stack_path) as sentinel_stack, rasterio.open(fmask_path) as fmask:
+    #         fmask_data = fmask.read(1)
+    #
+    #         # Cloud and cloud shadow masks
+    #         cloud_mask = (fmask_data & CLOUD_BIT) != 0
+    #         cloud_shadow_mask = (fmask_data & CLOUD_SHADOW_BIT) != 0
+    #         combined_mask = cloud_mask | cloud_shadow_mask
+    #
+    #         # Prepare an array to hold the masked data
+    #         masked_data = np.zeros_like(sentinel_stack.read(), dtype=rasterio.float32)
+    #
+    #         # Apply mask and fill with nodata value
+    #         nodata_value = sentinel_stack.nodata if sentinel_stack.nodata is not None else -9999
+    #
+    #         for band in range(sentinel_stack.count):
+    #             band_data = sentinel_stack.read(band + 1)
+    #             masked_data[band, :, :] = np.where(combined_mask, nodata_value, band_data)
+    #
+    #         # Update the profile for writing output
+    #         output_profile = sentinel_stack.profile.copy()
+    #         output_profile.update(dtype=rasterio.float32, nodata=nodata_value)
+    #
+    #         with rasterio.open(output_file, 'w', **output_profile) as dest:
+    #             dest.write(masked_data)
 
 
     """"""""
@@ -528,13 +648,40 @@ class prep:
     """"""""
 
     def warp_rasters(self, input_files, output_file, src_nodata=None, dst_nodata=None):
-        # Warp options
-        warp_options = gdal.WarpOptions(format='GTiff',
-                                        srcNodata=src_nodata,
-                                        dstNodata=dst_nodata,
-                                        multithread=True)
+        # Determine band count for each input and sort descending
+        band_counts = []
+        for fp in input_files:
+            ds = gdal.Open(fp)
+            if ds is None:
+                raise FileNotFoundError(f"Cannot open source file: {fp}")
+            band_counts.append((ds.RasterCount, fp))
+            ds = None  # close dataset
 
-        # Perform the warp
-        gdal.Warp(destNameOrDestDS=output_file,
-                  srcDSOrSrcDSTab=input_files,
-                  options=warp_options)
+        # Sort so that the dataset with the most bands comes first
+        sorted_files = [fp for _, fp in sorted(band_counts, key=lambda x: x[0], reverse=True)]
+
+        # Now GDAL will create the destination with the band count of the first source
+        warp_options = gdal.WarpOptions(
+            format='GTiff',
+            srcNodata=src_nodata,
+            dstNodata=dst_nodata,
+            multithread=True
+        )
+
+        gdal.Warp(
+            destNameOrDestDS=output_file,
+            srcDSOrSrcDSTab=sorted_files,
+            options=warp_options
+        )
+
+    # def warp_rasters(self, input_files, output_file, src_nodata=None, dst_nodata=None):
+    #     # Warp options
+    #     warp_options = gdal.WarpOptions(format='GTiff',
+    #                                     srcNodata=src_nodata,
+    #                                     dstNodata=dst_nodata,
+    #                                     multithread=True)
+    #
+    #     # Perform the warp
+    #     gdal.Warp(destNameOrDestDS=output_file,
+    #               srcDSOrSrcDSTab=input_files,
+    #               options=warp_options)
