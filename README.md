@@ -1,3 +1,7 @@
+<div align="center" style="background-color: #ffeb3b; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+  <strong>🚧 Under Construction:</strong> This documentation page is being actively developed. Content may change frequently.
+</div>
+
 # Borneo Forest Disturbance Dataset
 
 <!-- Hero section with satellite imagery background -->
